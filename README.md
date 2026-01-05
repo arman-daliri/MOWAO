@@ -1,2 +1,2 @@
 # MOWAO
-The Multi Objective Water Optimization algorithm: a pareto dominance-based metaheuristic algorithm for solving multi objective problems
+MOWAO: A Multi-Objective metahuristic based on Water Optimization Algorithm
