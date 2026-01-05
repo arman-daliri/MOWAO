@@ -1,11 +1,11 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "mowao.h"
+#include "../mowao/mowao.h"
 
 /* ZDT2 */
 void
-f(double *x, int x_len, double *f)
+f(double *x, int x_len, double *f, void *cb_arg)
 {
 	int i;
 	double g, sum = 0;
@@ -24,20 +24,20 @@ main(void)
 	int i;
 
 	mw->maxiter = 100;
-	mw->hpop = 100;
+	mw->npop = 100;
 	mw->nrepo = 80;
 	mw->bond_radius = 0.001;
-	mw->punch = 0.5;
+	mw->push = 0.5;
 	mw->evaporate = 0.8;
 	mw->coef = 1;
 
 	mw->nobj = 2;
-	mw->nvar = 10;
+	mw->ndec = 10;
 
 	mw->f = f;
 	mowao_alloc(mw);
 
-	for (i = 0; i < mw->nvar; i++) {
+	for (i = 0; i < mw->ndec; i++) {
 		mw->lb[i] = 0.0;
 		mw->ub[i] = 1.0;
 		mw->vlb[i] = -0.15;

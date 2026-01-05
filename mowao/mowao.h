@@ -1,14 +1,14 @@
 #ifndef __MOWAO__
 #define __MOWAO__
 
-typedef void (*problem_func)(double *x, int x_len, double *f);
+typedef void (*problem_func)(double *x, int x_len, double *f, void *cb_arg);
 
 struct Particle {
-	double *h; /* decision variables */
-	double *velocity;
-	double *pl; /* objectives */
+	double *dec; /* decision variables */
+	double *velocity; /* velocity vector */
+	double *f; /* objectives */
 	int evaporated;
-	int numh; /* number of particles */
+	int num_bond; /* number of bonds */
 };
 
 struct Repository {
@@ -24,20 +24,21 @@ struct Population {
 };
 
 struct MOWAO {
-	int nobj; /* objectives */
-	int nvar;
+	int nobj; /* number of objectives */
+	int ndec; /* number of decision variables */
 	double *lb, *ub;
-	int nrepo; /* repo size */
-	int hpop;
+	int nrepo; /* repository size */
+	int npop; /* population size */
 	int maxiter;
 
 	/* parameters */
 	double bond_radius;
-	double punch;
+	double push;
 	double evaporate;
 	double coef;
 	double *vlb, *vub;
 
+	void *cb_arg;
 	problem_func f;
 	//void (*f)(double *x, int x_len, double *pl);
 	struct Population pop;
@@ -54,6 +55,8 @@ void mowao_alloc(struct MOWAO *mw);
 void mowao_init(struct MOWAO *mw);
 void mowao_run(struct MOWAO *mw, int log);
 void mowao_clean(struct MOWAO *mw);
+void mowao_clean_memebers(struct MOWAO *mw);
+void mowao_clean_bounds(struct MOWAO *mw);
 void mowao_free(struct MOWAO *mw);
 
 void particle_alloc(struct MOWAO *mw, struct Particle *p);
@@ -61,7 +64,7 @@ void particle_init(struct MOWAO *mw, struct Particle *p);
 void particle_clean(struct Particle *p);
 void particle_copy(struct MOWAO *mw, struct Particle *dst,
 		   struct Particle *src);
-void particle_punch(struct MOWAO *mw, struct Particle *p);
+void particle_push(struct MOWAO *mw, struct Particle *p);
 void particle_evaporate(struct MOWAO *mw, struct Particle *p);
 
 void population_init(struct MOWAO *mw);

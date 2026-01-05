@@ -62,10 +62,10 @@ mowao_new(void)
 void
 mowao_alloc(struct MOWAO *mw)
 {
-	mw->lb = calloc(mw->nvar, sizeof(double));
-	mw->ub = calloc(mw->nvar, sizeof(double));
-	mw->vlb = calloc(mw->nvar, sizeof(double));
-	mw->vub = calloc(mw->nvar, sizeof(double));
+	mw->lb = calloc(mw->ndec, sizeof(double));
+	mw->ub = calloc(mw->ndec, sizeof(double));
+	mw->vlb = calloc(mw->ndec, sizeof(double));
+	mw->vub = calloc(mw->ndec, sizeof(double));
 }
 
 void
@@ -95,8 +95,37 @@ mowao_run(struct MOWAO *mw, int log)
 void
 mowao_clean(struct MOWAO *mw)
 {
+	population_clean(mw);
+	repository_clean(mw);
+	mowao_clean_memebers(mw);
+	mowao_clean_bounds(mw);
+}
+
+void
+mowao_clean_memebers(struct MOWAO *mw)
+{
 	int i;
 
+	for (i = 0; i > mw->ndec; i++) {
+		mw->vlb[i] = 0;
+		mw->vub[i] = 0;
+		mw->lb[i] = 0;
+		mw->ub[i] = 0;
+	}
+	mw->nobj = 0;
+	mw->ndec = 0;
+	mw->nrepo = 0;
+	mw->npop = 0;
+	mw->maxiter = 0;
+	mw->bond_radius = 0;
+	mw->push = 0;
+	mw->evaporate = 0;
+	mw->coef = 0;
+}
+
+void
+mowao_clean_bounds(struct MOWAO *mw)
+{
 	free(mw->lb);
 	mw->lb = NULL;
 	free(mw->ub);
@@ -105,24 +134,6 @@ mowao_clean(struct MOWAO *mw)
 	mw->vlb = NULL;
 	free(mw->vub);
 	mw->vub = NULL;
-	population_clean(mw);
-	repository_clean(mw);
-
-	for (i = 0; i > mw->nvar; i++) {
-		mw->vlb[i] = 0;
-		mw->vub[i] = 0;
-		mw->lb[i] = 0;
-		mw->ub[i] = 0;
-	}
-	mw->nobj = 0;
-	mw->nvar = 0;
-	mw->nrepo = 0;
-	mw->hpop = 0;
-	mw->maxiter = 0;
-	mw->bond_radius = 0;
-	mw->punch = 0;
-	mw->evaporate = 0;
-	mw->coef = 0;
 }
 
 void
@@ -134,9 +145,9 @@ mowao_free(struct MOWAO *mw)
 void
 particle_alloc(struct MOWAO *mw, struct Particle *p)
 {
-	p->h = calloc(mw->nvar, sizeof(double));
-	p->velocity = calloc(mw->nvar, sizeof(double));
-	p->pl = calloc(mw->nobj, sizeof(double));
+	p->dec = calloc(mw->ndec, sizeof(double));
+	p->velocity = calloc(mw->ndec, sizeof(double));
+	p->f = calloc(mw->nobj, sizeof(double));
 }
 
 void
@@ -144,38 +155,38 @@ particle_init(struct MOWAO *mw, struct Particle *p)
 {
 	int i;
 
-	for (i = 0; i < mw->nvar; i++) {
-		p->h[i] = randlim(mw->lb[i], mw->ub[i]);
+	for (i = 0; i < mw->ndec; i++) {
+		p->dec[i] = randlim(mw->lb[i], mw->ub[i]);
 		p->velocity[i] = randlim(mw->vlb[i], mw->vub[i]);
 	}
-	mw->f(p->h, mw->nvar, p->pl);
-	p->numh = 1;
+	mw->f(p->dec, mw->ndec, p->f, mw->cb_arg);
+	p->num_bond = 1;
 	p->evaporated = 0;
 }
 
 void
 particle_clean(struct Particle *p)
 {
-	free(p->h);
-	p->h = NULL;
+	free(p->dec);
+	p->dec = NULL;
 	free(p->velocity);
 	p->velocity = NULL;
-	free(p->pl);
-	p->pl = NULL;
+	free(p->f);
+	p->f = NULL;
 }
 
 void
 particle_copy(struct MOWAO *mw, struct Particle *dst, struct Particle *src)
 {
-	memcpy(dst->h, src->h, mw->nvar * sizeof(double));
-	memcpy(dst->velocity, src->velocity, mw->nvar * sizeof(double));
-	memcpy(dst->pl, src->pl, mw->nobj * sizeof(double));
+	memcpy(dst->dec, src->dec, mw->ndec * sizeof(double));
+	memcpy(dst->velocity, src->velocity, mw->ndec * sizeof(double));
+	memcpy(dst->f, src->f, mw->nobj * sizeof(double));
 
-	dst->numh = src->numh;
+	dst->num_bond = src->num_bond;
 }
 
 void
-particle_punch(struct MOWAO *mw, struct Particle *p)
+particle_push(struct MOWAO *mw, struct Particle *p)
 {
 	int i, ind = 0;
 	double rnd1, rnd2;
@@ -183,9 +194,9 @@ particle_punch(struct MOWAO *mw, struct Particle *p)
 	ind = randlim(0, mw->rep.end);
 	rnd1 = randlim(0, 1);
 	rnd2 = randlim(0, 1);
-	for (i = 0; i < mw->nvar; i++) {
+	for (i = 0; i < mw->ndec; i++) {
 		p->velocity[i] = rnd1 * p->velocity[i];
-		p->velocity[i] += rnd2 * (mw->rep.repo[ind].h[i] - p->h[i]);
+		p->velocity[i] += rnd2 * (mw->rep.repo[ind].dec[i] - p->dec[i]);
 	}
 }
 
@@ -194,10 +205,11 @@ particle_evaporate(struct MOWAO *mw, struct Particle *p)
 {
 	int i;
 
-	for (; p->numh > 1; p->numh--) {
-		mw->pop.pop[mw->pop.end].numh = 1;
+	for (; p->num_bond > 1; p->num_bond--) {
+		mw->pop.pop[mw->pop.end].num_bond = 1;
 		mw->pop.pop[mw->pop.end].evaporated = 1;
-		for (i = 0; i < mw->nvar; i++) {
+		for (i = 0; i < mw->ndec; i++) {
+			mw->pop.pop[mw->pop.end].dec[i] = p->dec[i];
 			mw->pop.pop[mw->pop.end].velocity[i] =
 				randlim(mw->vlb[i], mw->vub[i]);
 			mw->pop.pop[mw->pop.end].velocity[i] *= mw->coef;
@@ -205,7 +217,7 @@ particle_evaporate(struct MOWAO *mw, struct Particle *p)
 		mw->pop.end++;
 	}
 	p->evaporated = 1;
-	for (i = 0; i < mw->nvar; i++) {
+	for (i = 0; i < mw->ndec; i++) {
 		p->velocity[i] = randlim(mw->vlb[i], mw->vub[i]);
 		p->velocity[i] *= mw->coef;
 	}
@@ -215,9 +227,9 @@ void
 population_init(struct MOWAO *mw)
 {
 	int i;
-	mw->pop.pop = calloc(mw->hpop, sizeof(struct Particle));
+	mw->pop.pop = calloc(mw->npop, sizeof(struct Particle));
 	mw->pop.end = 0;
-	for (i = 0; i < mw->hpop; i++)
+	for (i = 0; i < mw->npop; i++)
 		particle_alloc(mw, &(mw->pop.pop[i]));
 	population_fill(mw);
 }
@@ -227,7 +239,7 @@ population_clean(struct MOWAO *mw)
 {
 	int i;
 
-	for (i = 0; i < mw->hpop; i++)
+	for (i = 0; i < mw->npop; i++)
 		particle_clean(&(mw->pop.pop[i]));
 	free(mw->pop.pop);
 	mw->pop.pop = NULL;
@@ -236,25 +248,24 @@ population_clean(struct MOWAO *mw)
 void
 population_fill(struct MOWAO *mw)
 {
-	int i;
-
-	for (i = mw->pop.end; i < mw->hpop; i++) {
-		particle_init(mw, &(mw->pop.pop[i]));
-		mw->pop.end++;
-	}
+	for (; mw->pop.end < mw->npop; mw->pop.end++)
+		particle_init(mw, &(mw->pop.pop[mw->pop.end]));
 }
 
 void
 population_update(struct MOWAO *mw)
 {
-	int i, j;
+	int i, j, k;
 	struct Particle *p = mw->pop.pop;
 
 	for (i = 0; i < mw->pop.end; i++) {
 		for (j = i + 1; j < mw->pop.end; j++) {
-			if (distance(p[i].pl, p[j].pl, mw->nobj, mw->rep.max) <=
+			if (distance(p[i].f, p[j].f, mw->nobj, mw->rep.max) <=
 			    mw->bond_radius) {
-				p[i].numh++;
+				for (k = 0; k < mw->ndec; k++)
+					p[i].velocity[k] += p[j].velocity[k];
+
+				p[i].num_bond++;
 				particle_copy(mw, &p[j], &p[mw->pop.end - 1]);
 				mw->pop.end--;
 				j--;
@@ -262,7 +273,7 @@ population_update(struct MOWAO *mw)
 		}
 	}
 
-	double perc = (double)mw->pop.end / mw->hpop * 100;
+	double perc = (double)mw->pop.end / mw->npop * 100;
 	if (perc < 70) {
 		mw->evaporate += 0.1;
 	} else if (perc > 90) {
@@ -275,20 +286,20 @@ population_update(struct MOWAO *mw)
 	}
 
 	for (i = 0; i < mw->pop.end; i++) {
-		if (p[i].numh > 1 && randlim(0, 1) <= mw->evaporate)
+		if (p[i].num_bond > 1 && randlim(0, 1) <= mw->evaporate)
 			particle_evaporate(mw, &p[i]);
-		else if (randlim(0, 1) <= mw->punch)
-			particle_punch(mw, &p[i]);
+		else if (randlim(0, 1) <= mw->push)
+			particle_push(mw, &p[i]);
 		if (p[i].evaporated == 0)
-			check_boundary(p[i].velocity, mw->nvar, mw->vub,
+			check_boundary(p[i].velocity, mw->ndec, mw->vub,
 				       mw->vlb);
 		else
 			p[i].evaporated = 0;
-		for (j = 0; j < mw->nvar; j++) {
-			p[i].h[j] += p[i].velocity[j];
+		for (j = 0; j < mw->ndec; j++) {
+			p[i].dec[j] += p[i].velocity[j];
 		}
-		check_boundary(p[i].h, mw->nvar, mw->ub, mw->lb);
-		mw->f(p[i].h, mw->nvar, p[i].pl);
+		check_boundary(p[i].dec, mw->ndec, mw->ub, mw->lb);
+		mw->f(p[i].dec, mw->ndec, p[i].f, mw->cb_arg);
 	}
 }
 
@@ -330,7 +341,7 @@ repository_check(struct MOWAO *mw)
 		for (j = 0; j < mw->rep.end; j++) {
 			if (i == j)
 				continue;
-			if (dominates(mw->rep.repo[i].pl, mw->rep.repo[j].pl,
+			if (dominates(mw->rep.repo[i].f, mw->rep.repo[j].f,
 				      mw->nobj)) {
 				particle_copy(mw, &(mw->rep.repo[j]),
 					      &(mw->rep.repo[mw->rep.end - 1]));
@@ -338,10 +349,10 @@ repository_check(struct MOWAO *mw)
 				j--;
 				continue;
 			}
-			if (distance(mw->rep.repo[i].pl, mw->rep.repo[j].pl,
+			if (distance(mw->rep.repo[i].f, mw->rep.repo[j].f,
 				     mw->nobj,
 				     mw->rep.max) <= mw->bond_radius) {
-				mw->rep.repo[i].numh++;
+				mw->rep.repo[i].num_bond++;
 				particle_copy(mw, &(mw->rep.repo[j]),
 					      &(mw->rep.repo[mw->rep.end - 1]));
 				mw->rep.end--;
@@ -358,11 +369,11 @@ repository_add(struct MOWAO *mw, struct Particle *p)
 	double dist, min;
 
 	for (i = 0; i < mw->rep.end; i++) {
-		if (dominates(p->pl, mw->rep.repo[i].pl, mw->nobj)) {
+		if (dominates(p->f, mw->rep.repo[i].f, mw->nobj)) {
 			particle_copy(mw, &(mw->rep.repo[i]), p);
 			return;
 		}
-		if (dominates(mw->rep.repo[i].pl, p->pl, mw->nobj)) {
+		if (dominates(mw->rep.repo[i].f, p->f, mw->nobj)) {
 			return;
 		}
 	}
@@ -395,21 +406,23 @@ repository_update(struct MOWAO *mw, struct Particle *p)
 	double obj[mw->nobj];
 	if (mw->rep.end > 0) {
 		for (i = 0; i < mw->nobj; i++)
-			obj[i] = mw->rep.repo[0].pl[i];
-		mw->f(mw->rep.repo[0].h, mw->nvar, mw->rep.repo[i].pl);
+			obj[i] = mw->rep.repo[0].f[i];
+		mw->f(mw->rep.repo[0].dec, mw->ndec, mw->rep.repo[i].f,
+		      mw->cb_arg);
 		for (i = 0; i < mw->nobj; i++)
-			if (obj[i] != mw->rep.repo[0].pl[i])
+			if (obj[i] != mw->rep.repo[0].f[i])
 				goto loop;
 		goto next;
 loop:
 		for (i = 0; i < mw->rep.end; i++)
-			mw->f(mw->rep.repo[i].h, mw->nvar, mw->rep.repo[i].pl);
+			mw->f(mw->rep.repo[i].dec, mw->ndec, mw->rep.repo[i].f,
+			      mw->cb_arg);
 	}
 next:
 
 	for (i = 0; i < mw->pop.end; i++) {
 		for (j = i + 1; j < mw->pop.end; j++) {
-			if (dominates(p[j].pl, p[i].pl, mw->nobj))
+			if (dominates(p[j].f, p[i].f, mw->nobj))
 				goto nextp;
 		}
 		repository_add(mw, &p[i]);
@@ -418,8 +431,8 @@ nextp:;
 
 	for (i = 0; i < mw->pop.end; i++) {
 		for (j = 0; j < mw->nobj; j++) {
-			if (p[i].pl[j] > mw->rep.max[j])
-				mw->rep.max[j] = p[i].pl[j];
+			if (p[i].f[j] > mw->rep.max[j])
+				mw->rep.max[j] = p[i].f[j];
 		}
 	}
 
@@ -436,11 +449,11 @@ repository_dist(struct MOWAO *mw, struct Particle *p)
 		mw->rep.dist[i] = INFINITY;
 
 	for (i = 0; i < mw->rep.end; i++) {
-		d = distance(p->pl, mw->rep.repo[i].pl, mw->nobj, mw->rep.max);
+		d = distance(p->f, mw->rep.repo[i].f, mw->nobj, mw->rep.max);
 		if (d < dist)
 			dist = d;
 		for (j = i + 1; j < mw->rep.end; j++) {
-			d = distance(mw->rep.repo[j].pl, mw->rep.repo[i].pl,
+			d = distance(mw->rep.repo[j].f, mw->rep.repo[i].f,
 				     mw->nobj, mw->rep.max);
 			if (d < mw->rep.dist[i]) {
 				mw->rep.dist[i] = d;
